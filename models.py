@@ -142,6 +142,54 @@ class PlanoArchivo(Base):
     plano = relationship("Plano", back_populates="archivos")
 
 
+class Presupuesto(Base):
+    """
+    Presupuesto/contrato con un contratista para una obra. El monto_total
+    es el valor acordado; a medida que avanza la obra, se van agregando
+    Certificaciones que indican cuánto se completó y cuánto corresponde
+    pagar en cada etapa.
+    """
+    __tablename__ = "presupuestos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    numero = Column(String(20), unique=True, nullable=False)
+    contratista = Column(String(150), nullable=False)
+    obra = Column(String(150))
+    descripcion = Column(Text)
+    monto_total = Column(Numeric(14, 2), nullable=False)
+    moneda = Column(String(3), nullable=False, default="PYG")
+    fecha = Column(Date, nullable=False)
+    estado = Column(String(20), nullable=False, default="Activo")  # Activo, Finalizado, Cancelado
+
+    certificaciones = relationship(
+        "Certificacion", back_populates="presupuesto",
+        cascade="all, delete-orphan", order_by="Certificacion.id",
+    )
+
+
+class Certificacion(Base):
+    """
+    Certificación de avance de obra: el arquitecto certifica el % de
+    avance ACUMULADO a la fecha. El sistema calcula el monto acumulado
+    (monto_total * porcentaje/100) y el monto que corresponde pagar en
+    este período (la diferencia contra la certificación anterior).
+    """
+    __tablename__ = "certificaciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    presupuesto_id = Column(Integer, ForeignKey("presupuestos.id"), nullable=False)
+    numero = Column(String(20), nullable=False)
+    fecha = Column(Date, nullable=False)
+    arquitecto = Column(String(150))
+    porcentaje_avance = Column(Numeric(5, 2), nullable=False)  # acumulado, 0-100
+    monto_acumulado = Column(Numeric(14, 2), nullable=False)
+    monto_periodo = Column(Numeric(14, 2), nullable=False)  # a pagar en esta certificación
+    observaciones = Column(Text)
+    estado_pago = Column(String(20), nullable=False, default="Pendiente")  # Pendiente, Pagado
+
+    presupuesto = relationship("Presupuesto", back_populates="certificaciones")
+
+
 class DocumentoContable(Base):
     __tablename__ = "documentos_contables"
 
