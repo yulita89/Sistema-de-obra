@@ -352,6 +352,110 @@ def eliminar_archivo_plano(plano_id: int, archivo_id: int, db: Session = Depends
 
 
 # =====================================================================
+# PRESUPUESTOS Y CERTIFICACIONES DE AVANCE
+# =====================================================================
+@app.get("/presupuestos", response_model=list[schemas.PresupuestoSalida])
+def listar_presupuestos(db: Session = Depends(get_db)):
+    return db.query(models.Presupuesto).all()
+
+
+@app.post("/presupuestos", response_model=schemas.PresupuestoSalida)
+def crear_presupuesto(datos: schemas.PresupuestoCrear, db: Session = Depends(get_db)):
+    p = models.Presupuesto(
+        numero=siguiente_numero(db, models.Presupuesto, "PR"),
+        contratista=datos.contratista, obra=datos.obra, descripcion=datos.descripcion,
+        monto_total=datos.monto_total, moneda=datos.moneda, fecha=datos.fecha,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@app.patch("/presupuestos/{presupuesto_id}/estado", response_model=schemas.PresupuestoSalida)
+def cambiar_estado_presupuesto(presupuesto_id: int, datos: schemas.PresupuestoEstado, db: Session = Depends(get_db)):
+    p = db.query(models.Presupuesto).get(presupuesto_id)
+    if not p:
+        raise HTTPException(404, "Presupuesto no encontrado.")
+    p.estado = datos.estado
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@app.delete("/presupuestos/{presupuesto_id}")
+def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Presupuesto).get(presupuesto_id)
+    if not p:
+        raise HTTPException(404, "Presupuesto no encontrado.")
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/presupuestos/{presupuesto_id}/certificaciones", response_model=schemas.PresupuestoSalida)
+def crear_certificacion(presupuesto_id: int, datos: schemas.CertificacionCrear, db: Session = Depends(get_db)):
+    presupuesto = db.query(models.Presupuesto).get(presupuesto_id)
+    if not presupuesto:
+        raise HTTPException(404, "Presupuesto no encontrado.")
+    if datos.porcentaje_avance < 0 or datos.porcentaje_avance > 100:
+        raise HTTPException(400, "El porcentaje de avance debe estar entre 0 y 100.")
+
+    ultima = (
+        db.query(models.Certificacion)
+        .filter(models.Certificacion.presupuesto_id == presupuesto_id)
+        .order_by(models.Certificacion.id.desc())
+        .first()
+    )
+    monto_acumulado_anterior = float(ultima.monto_acumulado) if ultima else 0.0
+    monto_acumulado = float(presupuesto.monto_total) * datos.porcentaje_avance / 100
+    if monto_acumulado < monto_acumulado_anterior:
+        raise HTTPException(400, "El porcentaje de avance no puede ser menor al de la última certificación.")
+    monto_periodo = monto_acumulado - monto_acumulado_anterior
+
+    total = db.query(func.count(models.Certificacion.id)).filter(
+        models.Certificacion.presupuesto_id == presupuesto_id
+    ).scalar() or 0
+    nueva = models.Certificacion(
+        presupuesto_id=presupuesto_id,
+        numero=f"CE-{str(total + 1).zfill(3)}",
+        fecha=datos.fecha, arquitecto=datos.arquitecto,
+        porcentaje_avance=datos.porcentaje_avance,
+        monto_acumulado=monto_acumulado, monto_periodo=monto_periodo,
+        observaciones=datos.observaciones,
+    )
+    db.add(nueva)
+    db.commit()
+    db.refresh(presupuesto)
+    return presupuesto
+
+
+@app.patch("/certificaciones/{cert_id}/estado-pago", response_model=schemas.PresupuestoSalida)
+def cambiar_estado_pago_certificacion(cert_id: int, datos: schemas.CertificacionEstadoPago, db: Session = Depends(get_db)):
+    cert = db.query(models.Certificacion).get(cert_id)
+    if not cert:
+        raise HTTPException(404, "Certificación no encontrada.")
+    cert.estado_pago = datos.estado_pago
+    db.commit()
+    presupuesto = db.query(models.Presupuesto).get(cert.presupuesto_id)
+    db.refresh(presupuesto)
+    return presupuesto
+
+
+@app.delete("/certificaciones/{cert_id}", response_model=schemas.PresupuestoSalida)
+def eliminar_certificacion(cert_id: int, db: Session = Depends(get_db)):
+    cert = db.query(models.Certificacion).get(cert_id)
+    if not cert:
+        raise HTTPException(404, "Certificación no encontrada.")
+    presupuesto_id = cert.presupuesto_id
+    db.delete(cert)
+    db.commit()
+    presupuesto = db.query(models.Presupuesto).get(presupuesto_id)
+    db.refresh(presupuesto)
+    return presupuesto
+
+
+# =====================================================================
 # DOCUMENTACIÓN CONTABLE
 # =====================================================================
 @app.get("/documentos-contables", response_model=list[schemas.DocumentoContableSalida])
