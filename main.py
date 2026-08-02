@@ -8,9 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from . import models, schemas
-from .database import engine, get_db
-from .security import hash_password, verify_password
+import models, schemas
+from database import engine, get_db
+from security import hash_password, verify_password
 
 # Crea las tablas en la base de datos si todavía no existen
 models.Base.metadata.create_all(bind=engine)
@@ -22,7 +22,7 @@ app = FastAPI(title="Sistema de Obra API")
 # cada redeploy o reinicio. Para producción real, o bien se paga un "disco
 # persistente" en Render, o se sube UPLOAD_DIR apuntando a un disco montado,
 # o se migra a un servicio de almacenamiento externo (ej. Cloudinary, S3).
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "uploads"))
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
